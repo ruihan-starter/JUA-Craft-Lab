@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>JUA Craft</title>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;1,400;1,600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #9E6530;
+  font-family: -apple-system, sans-serif;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  min-height: 100vh;
+}
+
+/* Rich canvas texture */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse at 12% 15%, rgba(200,140,60,0.35) 0%, transparent 45%),
+    radial-gradient(ellipse at 88% 80%, rgba(55,25,5,0.3)   0%, transparent 42%),
+    radial-gradient(ellipse at 55% 45%, rgba(140,80,20,0.12) 0%, transparent 65%),
+    repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.018) 2px, rgba(0,0,0,0.018) 3px
+    ),
+    repeating-linear-gradient(
+      90deg, transparent, transparent 6px,
+      rgba(0,0,0,0.01) 6px, rgba(0,0,0,0.01) 7px
+    );
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  padding: 24px 28px 18px;
+  background: linear-gradient(to bottom, rgba(120,70,20,0.95) 0%, transparent 100%);
+  backdrop-filter: blur(4px);
+}
+@media (min-width: 768px)  { .topbar { padding: 28px 52px 20px; } }
+@media (min-width: 1100px) { .topbar { padding: 32px 88px 22px; } }
+
+.brand {
+  font-family: 'Crimson Text', serif;
+  font-size: 21px; font-style: italic;
+  color: rgba(255,255,255,0.8);
+  letter-spacing: 0.06em;
+}
+.brand-loc {
+  font-size: 8px; letter-spacing: 0.24em;
+  color: rgba(255,255,255,0.25);
+  text-transform: uppercase; margin-top: 3px;
+}
+.tap-hint {
+  font-size: 8px; letter-spacing: 0.18em;
+  color: rgba(255,255,255,0.2);
+  text-transform: uppercase;
+}
+
+/* ── CANVAS ── */
+.canvas {
+  position: relative; z-index: 1;
+  max-width: 480px; margin: 0 auto;
+  padding-bottom: 160px;
+}
+@media (min-width: 600px)  { .canvas { max-width: 600px; } }
+@media (min-width: 900px)  { .canvas { max-width: 780px; } }
+@media (min-width: 1200px) { .canvas { max-width: 960px; } }
+
+/* ── TIMELINE ── */
+.tl-line {
+  position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 0.5px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(255,255,255,0.15) 3%,
+    rgba(255,255,255,0.15) 97%,
+    transparent 100%
+  );
+  transform: translateX(-50%);
+  pointer-events: none; z-index: 1;
+}
+
+/* ── MONTH MARKER ── */
+.month-marker {
+  position: relative; z-index: 5;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 52px 0 0;
+  opacity: 0; transform: translateY(-8px);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(.22,1,.36,1);
+}
+.month-marker.in { opacity: 1; transform: translateY(0); }
+.month-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(255,255,255,0.5);
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.09);
+  margin-bottom: 8px;
+}
+.month-label {
+  font-size: 7px; letter-spacing: 0.24em;
+  color: rgba(255,255,255,0.35);
+  text-transform: uppercase;
+  background: rgba(110,62,16,0.55);
+  padding: 3px 13px; border-radius: 12px;
+}
+
+/* ── SCATTER FIELD ── */
+.scatter-field { position: relative; }
+
+/* ── ITEM ── */
+.item {
+  position: absolute;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0;
+  will-change: transform;
+  transition:
+    transform 0.45s cubic-bezier(.22,1,.36,1),
+    filter 0.45s ease,
+    opacity 0.45s ease;
+}
+.item.in { opacity: 1; }
+.item:hover { z-index: 30; }
+
+/* Sold state */
+.item.sold { filter: saturate(0.1) brightness(0.65); }
+.item.sold:hover { filter: saturate(0.3) brightness(0.8); }
+
+/* 3D flip wrapper */
+.card-wrap {
+  transform-style: preserve-3d;
+  transition: transform 0.78s cubic-bezier(0.38, 0, 0.12, 1);
+}
+.item.sold     .card-wrap { transform: rotateY(180deg); }
+.item.sold.flipped .card-wrap { transform: rotateY(0deg); }
+
+/* Front */
+.card-front {
+  backface-visibility: hidden;
+  border-radius: 3px;
+  background: rgba(245,234,210,0.94);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  /* layered shadow for depth */
+  box-shadow:
+    1px 2px 0px rgba(255,255,255,0.18) inset,
+    2px 3px 6px rgba(20,8,0,0.18),
+    4px 7px 18px rgba(20,8,0,0.22),
+    8px 14px 32px rgba(20,8,0,0.14);
+}
+.card-front svg { width: 100%; height: 100%; display: block; }
+.item-no {
+  position: absolute; bottom: 5px; right: 7px;
+  font-size: 7px; letter-spacing: 0.1em;
+  color: rgba(80,48,18,0.28);
+  font-family: 'Crimson Text', serif; font-style: italic;
+}
+
+/* Back */
+.card-back {
+  position: absolute; inset: 0;
+  border-radius: 3px;
+  background: #1d1409;
+  transform: rotateY(180deg);
+  backface-visibility: hidden;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 5px;
+  box-shadow: 4px 8px 22px rgba(10,4,0,0.5);
+  border: 0.5px solid rgba(255,255,255,0.04);
+}
+.cb-brand {
+  font-family: 'Crimson Text', serif;
+  font-size: 12px; font-style: italic;
+  color: rgba(255,255,255,0.13);
+  letter-spacing: 0.06em;
+}
+.cb-no {
+  font-family: 'Crimson Text', serif;
+  font-size: 10px; font-style: italic;
+  color: rgba(255,255,255,0.08);
+}
+.cb-sold {
+  font-size: 5.5px; letter-spacing: 0.26em;
+  color: rgba(255,255,255,0.06);
+  text-transform: uppercase; margin-top: 2px;
+}
+
+/* Timeline dot + connector */
+.tl-dot {
+  position: absolute; left: 50%;
+  width: 4px; height: 4px; border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  transform: translate(-50%, -50%);
+  pointer-events: none; z-index: 2;
+}
+.tl-conn {
+  position: absolute;
+  height: 0.5px;
+  background: linear-gradient(to right, rgba(255,255,255,0.06), rgba(255,255,255,0.12));
+  pointer-events: none; z-index: 2;
+}
+.tl-conn.right {
+  background: linear-gradient(to left, rgba(255,255,255,0.06), rgba(255,255,255,0.12));
+}
+
+/* ── DETAIL SHEET ── */
+.detail-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.26s ease;
+}
+.detail-overlay.open { opacity: 1; pointer-events: all; }
+
+.detail-bg {
+  position: absolute; inset: 0;
+  background: rgba(4,2,0,0.7);
+  cursor: pointer;
+}
+
+.sheet {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 400px;
+  background: #1a1208;
+  border-radius: 22px 22px 0 0;
+  padding: 20px 28px 60px;
+  transform: translateY(50px);
+  transition: transform 0.36s cubic-bezier(.22,1,.36,1);
+}
+.detail-overlay.open .sheet { transform: translateY(0); }
+
+@media (min-width: 900px) {
+  .detail-overlay { align-items: center; }
+  .sheet {
+    max-width: 370px; border-radius: 18px;
+    padding: 28px 34px 38px;
+    transform: translateY(16px) scale(0.96);
+    box-shadow: 0 40px 100px rgba(0,0,0,0.7);
+  }
+  .detail-overlay.open .sheet { transform: translateY(0) scale(1); }
+}
+
+.drag-bar {
+  width: 30px; height: 3px; border-radius: 2px;
+  background: rgba(255,255,255,0.08);
+  margin: 0 auto 24px;
+}
+@media (min-width: 900px) { .drag-bar { display: none; } }
+
+.sheet-img {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 22px; min-height: 120px;
+}
+.sheet-img svg {
+  max-height: 140px; max-width: 65%;
+  filter: drop-shadow(0 8px 30px rgba(0,0,0,0.8));
+}
+
+.d-no {
+  font-size: 7.5px; letter-spacing: 0.24em;
+  color: rgba(255,255,255,0.2);
+  text-transform: uppercase; margin-bottom: 5px;
+}
+.d-name {
+  font-family: 'Crimson Text', serif;
+  font-size: 22px; color: rgba(255,255,255,0.9);
+  line-height: 1.15; margin-bottom: 4px;
+}
+.d-mat {
+  font-size: 10px; color: rgba(255,255,255,0.24);
+  letter-spacing: 0.07em; margin-bottom: 22px;
+}
+.d-row {
+  display: flex; justify-content: space-between; align-items: center;
+  border-top: 0.5px solid rgba(255,255,255,0.05);
+  padding-top: 16px;
+}
+.d-price {
+  font-family: 'Crimson Text', serif;
+  font-size: 22px; color: rgba(255,210,105,0.88);
+}
+.d-stock {
+  font-size: 8px; color: rgba(255,255,255,0.18);
+  margin-top: 3px; letter-spacing: 0.1em;
+}
+.heart-wrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.heart-btn {
+  background: none; border: none;
+  font-size: 28px; color: rgba(255,255,255,0.12);
+  cursor: pointer; transition: all 0.2s;
+  line-height: 1; padding: 2px 8px;
+}
+.heart-btn.liked { color: #b82828; }
+.heart-n { font-size: 9px; color: rgba(255,255,255,0.18); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="brand">JUA Craft</div>
+    <div class="brand-loc">Nairobi · Kenya</div>
+  </div>
+  <div class="tap-hint">tap to discover</div>
+</div>
+
+<div class="canvas" id="canvas">
+  <div class="tl-line"></div>
+</div>
+
+<div class="detail-overlay" id="detail-overlay">
+  <div class="detail-bg" onclick="closeDetail()"></div>
+  <div class="sheet">
+    <div class="drag-bar"></div>
+    <div class="sheet-img" id="d-img"></div>
+    <div class="d-no"  id="d-no"></div>
+    <div class="d-name" id="d-name"></div>
+    <div class="d-mat"  id="d-mat"></div>
+    <div class="d-row">
+      <div>
+        <div class="d-price" id="d-price"></div>
+        <div class="d-stock" id="d-stock"></div>
+      </div>
+      <div class="heart-wrap">
+        <button class="heart-btn" id="d-heart" onclick="likeItem()">♡</button>
+        <span class="heart-n" id="d-heart-n">0</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const S = {
+  elephant:`<svg viewBox="0 0 180 130" fill="none"><path d="M20 95 Q12 72 28 55 Q42 38 65 42 Q82 30 108 38 Q132 34 145 52 Q162 48 170 64 Q178 80 164 93 Q172 102 168 116 Q158 128 140 126 L132 138 L116 138 L112 126 Q94 132 76 128 Q58 134 46 124 L38 138 L22 138 L18 122 Z" fill="#e8ddc8" stroke="#a89070" stroke-width="1.5"/><path d="M65 42 Q56 26 44 20" stroke="#a89070" stroke-width="2.5" stroke-linecap="round"/><circle cx="40" cy="60" r="4" fill="#6B5030"/><line x1="88" y1="14" x2="88" y2="30" stroke="#8B7050" stroke-width="1.5"/><circle cx="104" cy="8" r="5" fill="#8B5a30"/></svg>`,
+  zebra:`<svg viewBox="0 0 100 140" fill="none"><path d="M20 30 Q50 10 80 30 L85 100 Q50 120 15 100 Z" fill="#f0ebe0" stroke="#2a1a0a" stroke-width="1.5"/><line x1="30" y1="35" x2="28" y2="75" stroke="#1a1a1a" stroke-width="3.5"/><line x1="45" y1="28" x2="43" y2="72" stroke="#1a1a1a" stroke-width="3.5"/><line x1="60" y1="28" x2="58" y2="72" stroke="#1a1a1a" stroke-width="3.5"/><line x1="73" y1="33" x2="71" y2="73" stroke="#1a1a1a" stroke-width="3.5"/></svg>`,
+  lion:`<svg viewBox="0 0 120 120" fill="none"><circle cx="60" cy="55" r="30" fill="#d4c090" stroke="#a08040" stroke-width="1.5"/><circle cx="60" cy="55" r="20" fill="#c09040"/><circle cx="52" cy="50" r="4" fill="#6B4020"/><circle cx="68" cy="50" r="4" fill="#6B4020"/><path d="M52 65 Q60 72 68 65" stroke="#8B5030" stroke-width="2" fill="none"/><path d="M30 55 Q20 40 22 55 Q20 68 32 62" fill="#c09040"/><path d="M90 55 Q100 40 98 55 Q100 68 88 62" fill="#c09040"/></svg>`,
+  buffalo:`<svg viewBox="0 0 200 160" fill="none"><ellipse cx="60" cy="100" rx="42" ry="50" fill="#8B1a1a"/><ellipse cx="140" cy="100" rx="42" ry="50" fill="#8B1a1a"/><path d="M35 75 Q60 48 85 75" stroke="#c8a060" stroke-width="2.5" fill="none"/><path d="M115 75 Q140 48 165 75" stroke="#c8a060" stroke-width="2.5" fill="none"/><circle cx="60" cy="38" r="7" fill="#333" stroke="#777" stroke-width="1.5"/><circle cx="140" cy="38" r="7" fill="#333" stroke="#777" stroke-width="1.5"/><line x1="60" y1="45" x2="60" y2="58" stroke="#777" stroke-width="1.5"/><line x1="140" y1="45" x2="140" y2="58" stroke="#777" stroke-width="1.5"/></svg>`,
+  bone:`<svg viewBox="0 0 100 160" fill="none"><path d="M28 20 L72 20 L80 140 L20 140 Z" fill="#f0ebe0" stroke="#2a1a0a" stroke-width="1.5"/><path d="M28 20 L72 20 L69 38 L31 38 Z" fill="#2a1a0a"/><path d="M32 52 L68 52 L65 68 L35 68 Z" fill="#2a1a0a"/><path d="M35 80 L65 80 L63 95 L37 95 Z" fill="#2a1a0a"/><line x1="50" y1="12" x2="50" y2="20" stroke="#8B6040" stroke-width="1.5"/><circle cx="50" cy="9" r="3" fill="none" stroke="#8B6040" stroke-width="1.2"/></svg>`,
+  quill:`<svg viewBox="0 0 80 160" fill="none"><ellipse cx="40" cy="26" rx="8" ry="8" fill="#8B6040" stroke="#6B4020" stroke-width="1"/><line x1="40" y1="34" x2="40" y2="46" stroke="#8B6040" stroke-width="1.5"/><rect x="28" y="46" width="24" height="4" rx="1" fill="#c8a050"/><line x1="30" y1="50" x2="22" y2="142" stroke="#3a2810" stroke-width="2" stroke-linecap="round"/><line x1="35" y1="50" x2="29" y2="144" stroke="#5a3a18" stroke-width="2" stroke-linecap="round"/><line x1="40" y1="50" x2="40" y2="146" stroke="#3a2810" stroke-width="2" stroke-linecap="round"/><line x1="45" y1="50" x2="51" y2="144" stroke="#5a3a18" stroke-width="2" stroke-linecap="round"/><line x1="50" y1="50" x2="58" y2="142" stroke="#3a2810" stroke-width="2" stroke-linecap="round"/></svg>`,
+  bead:`<svg viewBox="0 0 200 100" fill="none"><rect x="10" y="8" width="180" height="16" rx="2" fill="#c0392b"/><rect x="10" y="24" width="180" height="16" rx="2" fill="#1a1a1a"/><rect x="10" y="40" width="180" height="16" rx="2" fill="#f5f0e8"/><rect x="10" y="56" width="180" height="16" rx="2" fill="#c0392b"/><rect x="10" y="72" width="180" height="16" rx="2" fill="#e67e22"/></svg>`,
+  peacock:`<svg viewBox="0 0 100 170" fill="none"><line x1="50" y1="20" x2="50" y2="155" stroke="#2d5a3d" stroke-width="3" stroke-linecap="round"/><ellipse cx="50" cy="70" rx="22" ry="35" fill="#1a4a2e" opacity="0.7"/><ellipse cx="50" cy="72" rx="14" ry="24" fill="#2d7a4a" opacity="0.8"/><ellipse cx="50" cy="74" rx="7" ry="13" fill="#1a5a8a" opacity="0.9"/><ellipse cx="50" cy="76" rx="3" ry="6" fill="#c8a020"/><circle cx="50" cy="16" r="4" fill="none" stroke="#888" stroke-width="1.5"/></svg>`,
+};
+
+// Items: side, w/h vary per item for organic feel
+const data = [
+  { month:'Nov 2025', items:[
+    { id:'i1',  no:'001', name:'大象 · 骆驼骨项链',   mat:'骆驼骨 · 木珠',   price:'¥220', stock:'剩 1 件', likes:28, sold:false, svg:S.elephant, side:'left',  w:96,  h:76,  rot:-8  },
+    { id:'i2',  no:'002', name:'斑马 · 骨雕耳环',     mat:'牛骨 · 黑白纹',   price:'¥145', stock:'已售',    likes:41, sold:true,  svg:S.zebra,    side:'right', w:60,  h:92,  rot:7   },
+    { id:'i3',  no:'003', name:'狮子 · 铝雕耳环',     mat:'铝 · 手工锻造',   price:'¥168', stock:'剩 2 件', likes:15, sold:false, svg:S.lion,     side:'right', w:88,  h:88,  rot:-5  },
+    { id:'i4',  no:'004', name:'水牛 · 木雕耳环',     mat:'木 · 天然染料',   price:'¥128', stock:'已售',    likes:33, sold:true,  svg:S.buffalo,  side:'left',  w:104, h:80,  rot:6   },
+    { id:'i5',  no:'005', name:'骨雕 · 恩戈玛耳环',   mat:'牛骨 · 黑白纹',   price:'¥165', stock:'剩 2 件', likes:19, sold:false, svg:S.bone,     side:'left',  w:56,  h:98,  rot:-11 },
+    { id:'i6',  no:'006', name:'风之流 · 豪猪刺耳环', mat:'豪猪刺 · 黄铜',   price:'¥95',  stock:'已售',    likes:8,  sold:true,  svg:S.quill,    side:'right', w:50,  h:102, rot:10  },
+  ]},
+  { month:'Dec 2025', items:[
+    { id:'i7',  no:'007', name:'马赛 · 彩虹手环',     mat:'串珠 · 彩线',     price:'¥85',  stock:'剩 6 件', likes:34, sold:false, svg:S.bead,     side:'right', w:108, h:54,  rot:3   },
+    { id:'i8',  no:'008', name:'孔雀 · 羽毛耳环',     mat:'孔雀羽毛 · 银',   price:'¥110', stock:'剩 5 件', likes:22, sold:false, svg:S.peacock,  side:'left',  w:58,  h:104, rot:-7  },
+    { id:'i9',  no:'009', name:'大象 · 黄铜耳环',     mat:'黄铜 · 手工',     price:'¥138', stock:'已售',    likes:29, sold:true,  svg:S.elephant, side:'left',  w:92,  h:74,  rot:9   },
+    { id:'i10', no:'010', name:'斑马 · 铝雕项链',     mat:'铝 · 串珠',       price:'¥180', stock:'剩 1 件', likes:11, sold:false, svg:S.zebra,    side:'right', w:58,  h:92,  rot:-4  },
+  ]},
+];
+
+const liked = {};
+let currentItem = null;
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function build() {
+  const canvas = document.getElementById('canvas');
+  let entranceDelay = 80;
+
+  data.forEach(monthData => {
+    // Month marker
+    const marker = document.createElement('div');
+    marker.className = 'month-marker';
+    marker.innerHTML = `<div class="month-dot"></div><div class="month-label">${monthData.month}</div>`;
+    canvas.appendChild(marker);
+    setTimeout(() => marker.classList.add('in'), entranceDelay);
+    entranceDelay += 100;
+
+    // Scatter field
+    // Height: items laid out in two columns, roughly
+    const leftItems  = monthData.items.filter(i => i.side === 'left');
+    const rightItems = monthData.items.filter(i => i.side === 'right');
+    const maxRows = Math.max(leftItems.length, rightItems.length);
+    const ROW_H = 155;
+    const fieldH = maxRows * ROW_H + 80;
+
+    const field = document.createElement('div');
+    field.className = 'scatter-field';
+    field.style.height = fieldH + 'px';
+    canvas.appendChild(field);
+
+    // Place each side
+    [
+      { items: leftItems,  side: 'left'  },
+      { items: rightItems, side: 'right' },
+    ].forEach(({ items, side }) => {
+      items.forEach((item, idx) => {
+        // Base vertical position — stagger each row
+        const baseY = 20 + idx * ROW_H + rand(-18, 18);
+        // Horizontal: how far from the timeline center
+        // Min gap from center, plus random extra
+        const gap = rand(14, 48);
+
+        const el = document.createElement('div');
+        el.className = 'item' + (item.sold ? ' sold' : '');
+        el.style.top = baseY + 'px';
+        el.style.width = item.w + 'px';
+
+        if (side === 'left') {
+          el.style.right = `calc(50% + ${gap}px)`;
+        } else {
+          el.style.left = `calc(50% + ${gap}px)`;
+        }
+
+        // Initial entrance transform (slides in from side)
+        const baseTransform = `rotate(${item.rot}deg)`;
+        const entranceTransform = side === 'left'
+          ? `rotate(${item.rot}deg) translateX(-24px)`
+          : `rotate(${item.rot}deg) translateX(24px)`;
+        el.style.transform = entranceTransform;
+
+        el.innerHTML = `
+          <div class="card-wrap" style="width:${item.w}px;height:${item.h}px;">
+            <div class="card-front" style="width:${item.w}px;height:${item.h}px;">
+              ${item.svg}
+              <span class="item-no">${item.no}</span>
+            </div>
+            <div class="card-back">
+              <div class="cb-brand">JUA</div>
+              <div class="cb-no">#&thinsp;${item.no}</div>
+              <div class="cb-sold">archived</div>
+            </div>
+          </div>`;
+
+        // Hover
+        el.addEventListener('mouseenter', () => {
+          const canLift = !item.sold || el.classList.contains('flipped');
+          if (canLift) {
+            el.style.transform = `rotate(${item.rot * 0.3}deg) translateY(-12px) scale(1.1)`;
+            el.style.zIndex = 30;
+          }
+        });
+        el.addEventListener('mouseleave', () => {
+          el.style.transform = baseTransform;
+          el.style.zIndex = 10;
+        });
+
+        // Click
+        el.addEventListener('click', () => {
+          if (item.sold && !el.classList.contains('flipped')) {
+            el.classList.add('flipped');
+            setTimeout(() => openDetail(item), 440);
+          } else {
+            openDetail(item);
+          }
+        });
+
+        field.appendChild(el);
+
+        // Timeline connector dot
+        const dot = document.createElement('div');
+        dot.className = 'tl-dot';
+        dot.style.top = (baseY + item.h / 2) + 'px';
+        field.appendChild(dot);
+
+        // Connector line
+        const conn = document.createElement('div');
+        conn.className = 'tl-conn' + (side === 'right' ? ' right' : '');
+        conn.style.top = (baseY + item.h / 2) + 'px';
+        conn.style.width = (gap - 2) + 'px';
+        if (side === 'left') {
+          conn.style.left = `calc(50% - ${gap - 2}px)`;
+        } else {
+          conn.style.left = '50%';
+        }
+        field.appendChild(conn);
+
+        // Entrance animation
+        setTimeout(() => {
+          el.style.transition = `transform 0.58s cubic-bezier(.22,1,.36,1) ${entranceDelay}ms, opacity 0.5s ease ${entranceDelay}ms, filter 0.45s ease`;
+          el.style.transform = baseTransform;
+          el.classList.add('in');
+        }, 30);
+        entranceDelay += 100;
+      });
+    });
+  });
+}
+
+function openDetail(item) {
+  currentItem = item;
+  document.getElementById('d-img').innerHTML   = item.svg;
+  document.getElementById('d-no').textContent  = item.no + ' · ' + item.mat.toUpperCase();
+  document.getElementById('d-name').textContent = item.name;
+  document.getElementById('d-mat').textContent  = item.mat;
+  document.getElementById('d-price').textContent = item.price;
+  document.getElementById('d-stock').textContent = item.stock;
+  const isLiked = liked[item.id];
+  document.getElementById('d-heart').textContent  = isLiked ? '♥' : '♡';
+  document.getElementById('d-heart').className    = 'heart-btn' + (isLiked ? ' liked' : '');
+  document.getElementById('d-heart-n').textContent = isLiked ? item.likes + 1 : item.likes;
+  document.getElementById('detail-overlay').classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detail-overlay').classList.remove('open');
+}
+
+function likeItem() {
+  if (!currentItem) return;
+  liked[currentItem.id] = !liked[currentItem.id];
+  const isLiked = liked[currentItem.id];
+  document.getElementById('d-heart').textContent   = isLiked ? '♥' : '♡';
+  document.getElementById('d-heart').className     = 'heart-btn' + (isLiked ? ' liked' : '');
+  document.getElementById('d-heart-n').textContent = isLiked ? currentItem.likes + 1 : currentItem.likes;
+}
+
+build();
+</script>
+</body>
+</html>
